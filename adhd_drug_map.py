@@ -1,10 +1,7 @@
 import time
-import signal
-import pdb
 import fire
 
 import pycountry
-from joblib import Memory
 import plotly.express as px
 import pandas as pd
 from plotly.subplots import make_subplots
@@ -12,14 +9,16 @@ import plotly.graph_objects as go
 
 
 # list of drugs to monitor
+# Syntax:
+# "DRUGNAME": ["REGEX for the drug name column", {options for pd.DataFrame.str.contains}]
 drugs_regex_dict = {
-        "Atomoxetine": ["Atomoxetin.*", {"case": True}],
-        "Clonidine": ["Clonidine.*", {"case": True}],
-        "Dexamfetamine": ["Dexamfetamin.*", {"case": True}],
-        "Guanfacine": ["Guanfacin.*", {"case": True}],
-        "Lisdexamfetamine": ["Lisdexamfetamine.*", {"case": True}],
-        "Methylphenidate": ["Methylphenidat.*", {"case": True}],
-    }
+    "Atomoxetine": ["Atomoxetin.*", {"case": True}],
+    "Clonidine": ["Clonidine.*", {"case": True}],
+    "Dexamfetamine": ["Dexamfetamin.*", {"case": True}],
+    "Guanfacine": ["Guanfacin.*", {"case": True}],
+    "Lisdexamfetamine": ["Lisdexamfetamine.*", {"case": True}],
+    "Methylphenidate": ["Methylphenidat.*", {"case": True}],
+}
 
 
 def main(
@@ -58,10 +57,13 @@ def main(
             pass
 
     if debug:
+        import signal
+        import pdb
         signal.signal(signal.SIGINT, (lambda signal, frame : pdb.set_trace()))
         print("Debugging mode enabled")
 
     if not disable_cache:
+        from joblib import Memory
         mem = Memory("cache", verbose=0)
         load_df = mem.cache(_load_df)
         get_country = mem.cache(_get_country)
