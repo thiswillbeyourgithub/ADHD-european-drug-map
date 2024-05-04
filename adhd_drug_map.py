@@ -30,7 +30,26 @@ def main(
     show_or_export="show",
     debug: bool = False,
     ) -> None:
-    assert show_or_export in ["show", "export"], f"show_or_export must be 'show' or 'export', not {show_or_export}"
+    """
+    Parameters
+    ----------
+
+    source: str, default "https://www.ema.europa.eu/en/documents/other/article-57-product-data_en.xlsx"
+        url or path to the EMA file
+
+    disable_cache: bool, default False
+
+    verbose: bool, default True
+
+    show_or_export: str, default "show"
+        either show, to open the figure in the browser, or "export" to export
+        as html, json and png or "both" to do both.
+
+    debug: bool, default False
+        open pdb if something fails
+    """
+    assert show_or_export in ["show", "export"], (
+        f"Invalid show_or_export: {show_or_export}")
     if verbose:
         def p(message: str) -> None:
             print(message)
