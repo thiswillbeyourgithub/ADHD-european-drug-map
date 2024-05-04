@@ -164,10 +164,10 @@ def main(
     )]
     figs.update_layout(sliders=sliders)
 
-    if show_or_export == "show":
+    if show_or_export in ["show", "both"]:
         p("Showing map") 
         figs.show()
-    elif show_or_export == "export":
+    elif show_or_export in ["export", "both"]:
         p("Exporting as html")
         figs.write_html(f"map_export_{int(time.time())}.html")
         p("Exporting as json")
