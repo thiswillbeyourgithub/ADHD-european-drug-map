@@ -1,4 +1,8 @@
-import json
+import time
+import signal
+import pdb
+import fire
+
 import pycountry
 from joblib import Memory
 import plotly.express as px
@@ -6,8 +10,6 @@ import pandas as pd
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
-
-mem = Memory("cache", verbose=0)
 
 # list of drugs to monitor
 drugs_regex_dict = {
@@ -19,137 +21,178 @@ drugs_regex_dict = {
         "Methylphenidate": ["Methylphenidat.*", {"case": True}],
     }
 
-# up to date URL
-url = "https://www.ema.europa.eu/en/documents/other/article-57-product-data_en.xlsx"
-# local file
-local_file = "./article-57-product-data_en-copy.xlsx"
 
-@mem.cache
-def get_country(fullname: str) -> str:
-    "turn France into FRA"
-    return pycountry.countries.search_fuzzy(fullname)[0].alpha_3
+def main(
+    source: str = "https://www.ema.europa.eu/en/documents/other/article-57-product-data_en.xlsx",
+    #source: = "./article-57-product-data_en-copy.xlsx",
+    disable_cache: bool = False,
+    verbose: bool = True,
+    show_or_export="show",
+    debug: bool = False,
+    ) -> None:
+    assert show_or_export in ["show", "export"], f"show_or_export must be 'show' or 'export', not {show_or_export}"
+    if verbose:
+        def p(message: str) -> None:
+            print(message)
+    else:
+        def p(message: str) -> None:
+            pass
 
-@mem.cache
-def load_df(source):
-    "cached loading of dataframe"
-    print(f"Loading {source}")
-    df = pd.read_excel(source, skiprows=19)
+    if debug:
+        signal.signal(signal.SIGINT, (lambda signal, frame : pdb.set_trace()))
+        print("Debugging mode enabled")
 
-    # rename columns then filter
-    df.columns = [col.splitlines()[0] for col in df.columns]
-    df = df.loc[:, ["Active substance", "Product authorisation country"]]
-    df.columns = ["Name", "Country"]
+    if not disable_cache:
+        mem = Memory("cache", verbose=0)
+        load_df = mem.cache(_load_df)
+        get_country = mem.cache(_get_country)
+    else:
+        load_df = _load_df
+        get_country = _get_country
 
-    return df
+    p(f"Disabled cache: {bool(disable_cache)}")
 
-df = load_df(source=local_file)
+    p(f"Loading source {source}")
+    df = load_df(source=source)
+    p("Done loading.")
 
-# filter by the regex
-drugs_df = {}
-for k, v in drugs_regex_dict.items():
-    drugs_df[k] = df[df["Name"].str.contains(v[0], **v[1])]
+    drugs_df = {}
+    drugs_country_list = {}
+    for k, v in drugs_regex_dict.items():
+        p(f"Filtering data for {k}")
+        drug_df = df[df["Name"].str.contains(v[0], **v[1])]
+        drugs_df[k] = drug_df
 
-# get the list of each country for each drug
-drugs_country_list = {}
-for k, v in drugs_df.items():
-    countries = set(v["Country"].tolist())
-    countries = [c.split("(")[0].strip() for c in countries]
-    for ic, c in enumerate(countries):
-        if c.lower().strip() == "european union":
-            code = "Europe"
-        else:
-            try:
-                code = get_country(c)
-            except Exception as err:
-                print(err)
-                breakpoint()
-        countries[ic] = code
-    drugs_country_list[k] = sorted(countries)
+        # get the list of each country for each drug
+        countries = set(drug_df["Country"].tolist())
+        countries = [c.split("(")[0].strip() for c in countries]
+        for ic, c in enumerate(countries):
+            if c.lower().strip() == "european union":
+                code = "Europe"
+            else:
+                try:
+                    code = get_country(c)
+                except Exception as err:
+                    print(err)
+                    breakpoint()
+            countries[ic] = code
+        drugs_country_list[k] = sorted(countries)
 
-# load starting map
-# 2007 is the most recent from that dataset
-map = px.data.gapminder().query(f"year==2007")
-# restrict to Europe
-map = map[map.loc[:, "continent"] == "Europe"]
-# remove useless columns
-map = map.loc[:, ["country", "iso_alpha"]]
+    p("Loading Europe map")
+    # 2007 is the most recent from that dataset
+    map = px.data.gapminder().query(f"year==2007")
+    # restrict to Europe
+    map = map[map.loc[:, "continent"] == "Europe"]
+    # remove useless columns
+    map = map.loc[:, ["country", "iso_alpha"]]
 
-# add missing countries
-map = pd.concat([map, pd.DataFrame([{"country": "Estonia", "iso_alpha": "EST"}])])
-map = pd.concat([map, pd.DataFrame([{"country": "Lithuania", "iso_alpha": "LTU"}])])
-map = pd.concat([map, pd.DataFrame([{"country": "Luxemburg", "iso_alpha": "LUX"}])])
-map = pd.concat([map, pd.DataFrame([{"country": "Malta", "iso_alpha": "MLT"}])])
-map = pd.concat([map, pd.DataFrame([{"country": "Chypria", "iso_alpha": "CYP"}])])
-map = pd.concat([map, pd.DataFrame([{"country": "Liechtenstein", "iso_alpha": "LIE"}])])
-map = pd.concat([map, pd.DataFrame([{"country": "Latvia", "iso_alpha": "LVA"}])])
-assert not map.empty
+    # add missing countries
+    map = pd.concat([map, pd.DataFrame([{"country": "Estonia", "iso_alpha": "EST"}])])
+    map = pd.concat([map, pd.DataFrame([{"country": "Lithuania", "iso_alpha": "LTU"}])])
+    map = pd.concat([map, pd.DataFrame([{"country": "Luxemburg", "iso_alpha": "LUX"}])])
+    map = pd.concat([map, pd.DataFrame([{"country": "Malta", "iso_alpha": "MLT"}])])
+    map = pd.concat([map, pd.DataFrame([{"country": "Chypria", "iso_alpha": "CYP"}])])
+    map = pd.concat([map, pd.DataFrame([{"country": "Liechtenstein", "iso_alpha": "LIE"}])])
+    map = pd.concat([map, pd.DataFrame([{"country": "Latvia", "iso_alpha": "LVA"}])])
+    assert not map.empty
 
-map_iso = sorted(map["iso_alpha"].tolist())
+    map_iso = sorted(map["iso_alpha"].tolist())
 
-map["medications"] = ""
-map = map.reset_index().set_index("iso_alpha")
-for i, medication in enumerate(drugs_country_list):
-    countries = drugs_country_list[medication]
-    map.loc[:, medication] = 0
+    map["medications"] = ""
+    map = map.reset_index().set_index("iso_alpha")
+    for i, medication in enumerate(drugs_country_list):
+        p(f"Adding {medication} to the map")
+        countries = drugs_country_list[medication]
+        map.loc[:, medication] = 0
 
-    for cnt in countries:
-        assert cnt in map_iso + ["Europe"], f"{cnt} not in {map_iso}"
-        if cnt == "Europe":
-            for cnt in map_iso:
+        for cnt in countries:
+            assert cnt in map_iso + ["Europe"], f"{cnt} not in {map_iso}"
+            if cnt == "Europe":
+                for cnt in map_iso:
+                    if medication in map.loc[cnt, "medications"]:
+                        continue
+                    if map.loc[cnt, "medications"] == "":
+                        map.loc[cnt, "medications"] = medication
+                    else:
+                        map.loc[cnt, "medications"] += ", " + medication
+            else:
                 if medication in map.loc[cnt, "medications"]:
                     continue
                 if map.loc[cnt, "medications"] == "":
                     map.loc[cnt, "medications"] = medication
                 else:
                     map.loc[cnt, "medications"] += ", " + medication
-        else:
-            if medication in map.loc[cnt, "medications"]:
-                continue
-            if map.loc[cnt, "medications"] == "":
-                map.loc[cnt, "medications"] = medication
-            else:
-                map.loc[cnt, "medications"] += ", " + medication
 
-        map.loc[cnt, medication] = 1
+            map.loc[cnt, medication] = 1
 
-map = map.reset_index().set_index("index")
+    map = map.reset_index().set_index("index")
 
-figs = make_subplots(
-    rows=1,
-    cols=1,
-    subplot_titles=["European ADHD medication"],
-    specs=[[{"type": "geo"}]],
-)
-steps = []
-
-for i, medication in enumerate(drugs_country_list):
-    fig = go.Choropleth(
-        locations=map["iso_alpha"],
-        z=map[medication],
-        colorscale=["white", "green"],
-        hoverinfo="text",
-        text=[f"{a}<br>{b}" for a, b in zip(map["country"], map["medications"])],
-        showscale=False,
+    p("Creating the plot")
+    figs = make_subplots(
+        rows=1,
+        cols=1,
+        subplot_titles=["European ADHD medication"],
+        specs=[[{"type": "geo"}]],
     )
-    figs.add_trace(fig, row=1, col=1)
-    step = dict(
-        method="update",
-        args=[{"visible": [False] * len(drugs_country_list)},
-              {"title": medication}],
-        label=medication,
-    )
-    step["args"][0]["visible"][i] = True  # Toggle i-th trace to "visible"
-    steps.append(step)
+    steps = []
+
+    for i, medication in enumerate(drugs_country_list):
+        fig = go.Choropleth(
+            locations=map["iso_alpha"],
+            z=map[medication],
+            colorscale=["white", "green"],
+            hoverinfo="text",
+            text=[f"{a}<br>{b}" for a, b in zip(map["country"], map["medications"])],
+            showscale=False,
+        )
+        figs.add_trace(fig, row=1, col=1)
+        step = dict(
+            method="update",
+            args=[{"visible": [False] * len(drugs_country_list)},
+                {"title": medication}],
+            label=medication,
+        )
+        step["args"][0]["visible"][i] = True  # Toggle i-th trace to "visible"
+        steps.append(step)
 
 
-figs.update_geos(scope='europe')
-sliders = [dict(
-    active=0,
-    currentvalue={"prefix": "Select medication: "},
-    steps=steps
-)]
-figs.update_layout(sliders=sliders)
-figs.show()
+    figs.update_geos(scope='europe')
+    sliders = [dict(
+        active=0,
+        currentvalue={"prefix": "Select medication: "},
+        steps=steps
+    )]
+    figs.update_layout(sliders=sliders)
 
-import code ; code.interact(local=locals())
+    if show_or_export == "show":
+        p("Showing map") 
+        figs.show()
+    elif show_or_export == "export":
+        p("Exporting as html")
+        figs.write_html(f"map_export_{int(time.time())}.html")
+        p("Exporting as json")
+        figs.write_json(f"map_export_{int(time.time())}.json")
+        p("Exporting as png")
+        figs.write_image(f"map_export_{int(time.time())}.png")
+    else:
+        raise ValueError(f"Invalid show_or_export: {show_or_export}")
 
+    p("Done")
+
+
+def _get_country(fullname: str) -> str:
+    "turn France into FRA"
+    return pycountry.countries.search_fuzzy(fullname)[0].alpha_3
+
+
+def _load_df(source: str) -> pd.DataFrame:
+    "loading of pandas dataframe, optionnaly cached"
+    df = pd.read_excel(source, skiprows=19)
+    # rename columns then filter
+    df.columns = [col.splitlines()[0] for col in df.columns]
+    df = df.loc[:, ["Active substance", "Product authorisation country"]]
+    df.columns = ["Name", "Country"]
+    return df
+
+if __name__ == "__main__":
+    fire.Fire(main)
