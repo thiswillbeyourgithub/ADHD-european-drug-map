@@ -47,7 +47,7 @@ def main(
     debug: bool, default False
         open pdb if something fails
     """
-    assert show_or_export in ["show", "export"], (
+    assert show_or_export in ["show", "export", "both"], (
         f"Invalid show_or_export: {show_or_export}")
     if verbose:
         def p(message: str) -> None:
