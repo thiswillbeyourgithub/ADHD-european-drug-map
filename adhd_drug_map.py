@@ -197,16 +197,16 @@ def main(
     )]
     figs.update_layout(sliders=sliders)
 
-    if show_or_export in ["show", "both"]:
-        p("Showing map") 
-        figs.show()
-    elif show_or_export in ["export", "both"]:
+    if show_or_export in ["export", "both"]:
         p("Exporting as html")
         figs.write_html(f"map_export_{int(time.time())}.html")
         p("Exporting as json")
         figs.write_json(f"map_export_{int(time.time())}.json")
         p("Exporting as png")
         figs.write_image(f"map_export_{int(time.time())}.png")
+    elif show_or_export in ["show", "both"]:
+        p("Showing map")
+        figs.show()
     else:
         raise ValueError(f"Invalid show_or_export: {show_or_export}")
 
