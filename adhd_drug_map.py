@@ -163,14 +163,6 @@ def main(
     colorscale = [[0, "rgb(255, 0, 0)"], [1, "rgb(0, 255, 0)"]]
     colorscale_all_1 = [[0, "rgb(0, 255, 0)"], [1, "rgb(0, 255, 0)"]]
     colorscale_all_0 = [[0, "rgb(255, 0, 0)"], [1, "rgb(255, 0, 0)"]]
-    # colorscale = [
-    #     [0, '#FF0000'],    # Red
-    #     [0.33, '#FF0000'], # Red
-    #     [0.33, '#0000FF'], # Blue
-    #     [0.67, '#0000FF'], # Blue
-    #     [0.67, '#008000'], # Green
-    #     [1.0, '#008000']   # Green
-    # ]
 
 
     for i, medication in enumerate(drugs_country_list):
@@ -181,8 +173,11 @@ def main(
             text=[f"{a}<br>{b}" for a, b in zip(map["country"], map["medications"])],
             showscale=False,
         )
+
+        # set colorscale
         vals = list(set(map[f"color_{medication}"].tolist()))
         if len(vals) == 1:
+            # use uniquecolor colorscale if it's the same z value for all countries
             if vals[0] == 0:
                 fig.colorscale=colorscale_all_0
             elif vals[0] == 1:
@@ -191,6 +186,7 @@ def main(
                 raise ValueError(vals)
         else:
             fig.colorscale=colorscale
+
         figs.add_trace(fig, row=1, col=1)
         step = dict(
             method="update",
