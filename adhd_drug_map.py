@@ -138,6 +138,7 @@ def main(
                         map.loc[cnt, "medications"] = medication
                     else:
                         map.loc[cnt, "medications"] += ", " + medication
+                    map.loc[cnt, f"color_{medication}"] = 1
             else:
                 if medication in map.loc[cnt, "medications"]:
                     continue
