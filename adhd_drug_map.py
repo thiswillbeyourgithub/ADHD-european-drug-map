@@ -1,26 +1,24 @@
 import time
 from pathlib import Path
+
 import fire
-
-import pycountry
-import plotly.express as px
 import pandas as pd
-from plotly.subplots import make_subplots
+import plotly.express as px
 import plotly.graph_objects as go
-
+import pycountry
+from plotly.subplots import make_subplots
 
 # list of drugs to monitor
 # Syntax:
 # "DRUGNAME": ["REGEX for the drug name column", {options for pd.DataFrame.str.contains}]
-drugs_regex_dict = {
-    "Atomoxetine": ["Atomoxetin.*", {"case": True}],
-    "Clonidine": ["Clonidine.*", {"case": True}],
-    "Dexamfetamine": ["Dexamfetamin.*", {"case": True}],
-    "Guanfacine": ["Guanfacin.*", {"case": True}],
-    "Lisdexamfetamine": ["Lisdexamfetamine.*", {"case": True}],
-    "Methylphenidate": ["Methylphenidat.*", {"case": True}],
+drugs_regex_dict: dict[str, str] = {
+    "Methylphenidate": r"\bmethylphenidat",
+    "Lisdexamfetamine": r"\blisdexam(?:f|ph)etamin",
+    "Dexamfetamine": r"\bdexam(?:f|ph)etamin",
+    "Atomoxetine": r"\batomoxetin",
+    "Guanfacine": r"\bguanfacin",
+    "Clonidine": r"\bclonidin"
 }
-
 
 def main(
     source: str = "https://www.ema.europa.eu/en/documents/other/article-57-product-data_en.xlsx",
@@ -63,14 +61,12 @@ def main(
         signal.signal(signal.SIGINT, (lambda signal, frame : pdb.set_trace()))
         print("Debugging mode enabled")
 
-    if not disable_cache:
+    if disable_cache:
+        load_df = _load_df
+    else:
         from joblib import Memory
         mem = Memory("cache", verbose=0)
         load_df = mem.cache(_load_df)
-        get_country = mem.cache(_get_country)
-    else:
-        load_df = _load_df
-        get_country = _get_country
 
     p(f"Disabled cache: {bool(disable_cache)}")
 
@@ -78,12 +74,10 @@ def main(
     df = load_df(source=source)
     p("Done loading.")
 
-    drugs_df = {}
     drugs_country_list = {}
-    for k, v in drugs_regex_dict.items():
-        p(f"Filtering data for {k}")
-        drug_df = df[df["Name"].str.contains(v[0], **v[1])]
-        drugs_df[k] = drug_df
+    for drug_name, drug_regex in drugs_regex_dict.items():
+        p(f"Filtering data for {drug_name}")
+        drug_df = df[df["Name"].str.contains(drug_regex, case=False)]
 
         # get the list of each country for each drug
         countries = set(drug_df["Country"].tolist())
@@ -98,58 +92,59 @@ def main(
                     print(err)
                     breakpoint()
             countries[ic] = code
-        drugs_country_list[k] = sorted(countries)
+        drugs_country_list[drug_name] = sorted(countries)
 
     p("Loading Europe map")
     # 2007 is the most recent from that dataset
-    map = px.data.gapminder().query(f"year==2007")
+    geomap = px.data.gapminder().query("year==2007")
     # restrict to Europe
-    map = map[map.loc[:, "continent"] == "Europe"]
+    geomap = geomap[geomap.loc[:, "continent"] == "Europe"]
+    # remove Switzerland (not in European Union)
+    geomap = geomap[geomap.loc[:, "country"] != "Switzerland"]
     # remove useless columns
-    map = map.loc[:, ["country", "iso_alpha"]]
+    geomap = geomap.loc[:, ["country", "iso_alpha"]]
 
     # add missing countries
-    map = pd.concat([map, pd.DataFrame([{"country": "Estonia", "iso_alpha": "EST"}])])
-    map = pd.concat([map, pd.DataFrame([{"country": "Lithuania", "iso_alpha": "LTU"}])])
-    map = pd.concat([map, pd.DataFrame([{"country": "Luxemburg", "iso_alpha": "LUX"}])])
-    map = pd.concat([map, pd.DataFrame([{"country": "Malta", "iso_alpha": "MLT"}])])
-    map = pd.concat([map, pd.DataFrame([{"country": "Chypria", "iso_alpha": "CYP"}])])
-    map = pd.concat([map, pd.DataFrame([{"country": "Liechtenstein", "iso_alpha": "LIE"}])])
-    map = pd.concat([map, pd.DataFrame([{"country": "Latvia", "iso_alpha": "LVA"}])])
-    assert not map.empty
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Estonia", "iso_alpha": "EST"}])])
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Lithuania", "iso_alpha": "LTU"}])])
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Luxemburg", "iso_alpha": "LUX"}])])
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Malta", "iso_alpha": "MLT"}])])
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Chypria", "iso_alpha": "CYP"}])])
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Liechtenstein", "iso_alpha": "LIE"}])])
+    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Latvia", "iso_alpha": "LVA"}])])
+    assert not geomap.empty
 
-    map_iso = sorted(map["iso_alpha"].tolist())
+    map_iso = sorted(geomap["iso_alpha"].tolist())
 
-    map["medications"] = ""
-    map = map.reset_index().set_index("iso_alpha")
-    for i, medication in enumerate(drugs_country_list):
-        p(f"Adding {medication} to the map")
-        countries = drugs_country_list[medication]
+    geomap["medications"] = ""
+    geomap = geomap.reset_index().set_index("iso_alpha")
+    for drug_name, countries in drugs_country_list.items():
+        p(f"Adding {drug_name} to the map")
 
-        map.loc[:, medication] = "Missing"
-        map.loc[:, f"color_{medication}"] = 0
+        geomap.loc[:, drug_name] = "Missing"
+        geomap.loc[:, f"color_{drug_name}"] = 0
 
         for cnt in countries:
             assert cnt in map_iso + ["Europe"], f"{cnt} not in {map_iso}"
             if cnt == "Europe":
                 for cnt in map_iso:
-                    if medication in map.loc[cnt, "medications"]:
+                    if drug_name in geomap.loc[cnt, "medications"]:
                         continue
-                    if map.loc[cnt, "medications"] == "":
-                        map.loc[cnt, "medications"] = medication
+                    if geomap.loc[cnt, "medications"] == "":
+                        geomap.loc[cnt, "medications"] = drug_name
                     else:
-                        map.loc[cnt, "medications"] += ", " + medication
-                    map.loc[cnt, f"color_{medication}"] = 1
+                        geomap.loc[cnt, "medications"] += ", " + drug_name
+                    geomap.loc[cnt, f"color_{drug_name}"] = 1
             else:
-                if medication in map.loc[cnt, "medications"]:
+                if drug_name in geomap.loc[cnt, "medications"]:
                     continue
-                if map.loc[cnt, "medications"] == "":
-                    map.loc[cnt, "medications"] = medication
+                if geomap.loc[cnt, "medications"] == "":
+                    geomap.loc[cnt, "medications"] = drug_name
                 else:
-                    map.loc[cnt, "medications"] += ", " + medication
+                    geomap.loc[cnt, "medications"] += ", " + drug_name
 
-            map.loc[cnt, medication] = "Available"
-            map.loc[cnt, f"color_{medication}"] = 1
+            geomap.loc[cnt, drug_name] = "Available"
+            geomap.loc[cnt, f"color_{drug_name}"] = 1
 
 
     p("Creating the plot")
@@ -160,24 +155,24 @@ def main(
         specs=[[{"type": "geo"}]],
     )
     steps = []
-    map = map.reset_index().set_index("index")
+    geomap = geomap.reset_index().set_index("index")
     colorscale = [[0, "rgb(255, 0, 0)"], [1, "rgb(0, 255, 0)"]]
     colorscale_all_1 = [[0, "rgb(0, 255, 0)"], [1, "rgb(0, 255, 0)"]]
     colorscale_all_0 = [[0, "rgb(255, 0, 0)"], [1, "rgb(255, 0, 0)"]]
 
     list_of_figs = []
 
-    for i, medication in enumerate(drugs_country_list):
+    for drug_name in drugs_country_list:
         fig = go.Choropleth(
-            locations=map["iso_alpha"],
-            z=map[f"color_{medication}"],
+            locations=geomap["iso_alpha"],
+            z=geomap[f"color_{drug_name}"],
             hoverinfo="text",
-            text=[f"{a}<br>{b}" for a, b in zip(map["country"], map["medications"])],
+            text=[f"{a}<br>{b}" for a, b in zip(geomap["country"], geomap["medications"])],
             showscale=False,
         )
 
         # set colorscale
-        vals = list(set(map[f"color_{medication}"].tolist()))
+        vals = list(set(geomap[f"color_{drug_name}"].tolist()))
         if len(vals) == 1:
             # use uniquecolor colorscale if it's the same z value for all countries
             if vals[0] == 0:
@@ -192,13 +187,16 @@ def main(
         list_of_figs.append(fig) # for png storage
 
         figs.add_trace(fig, row=1, col=1)
+
+        # Only show the current medication and hide all the others
+        visible = [drug_name == name for name in drugs_country_list]
+
         step = dict(
             method="update",
-            args=[{"visible": [False] * len(drugs_country_list)},
-                {"title": medication}],
-            label=medication,
+            args=[{"visible": visible},
+                {"title": drug_name}],
+            label=drug_name,
         )
-        step["args"][0]["visible"][i] = True  # Toggle i-th trace to "visible"
         steps.append(step)
 
     figs.update_geos(scope='europe')
@@ -236,7 +234,7 @@ def main(
     p("Done")
 
 
-def _get_country(fullname: str) -> str:
+def get_country(fullname: str) -> str:
     "turn France into FRA"
     return pycountry.countries.search_fuzzy(fullname)[0].alpha_3
 
