@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 import fire
 
 import pycountry
@@ -166,7 +167,6 @@ def main(
 
     list_of_figs = []
 
-
     for i, medication in enumerate(drugs_country_list):
         fig = go.Choropleth(
             locations=map["iso_alpha"],
@@ -201,7 +201,6 @@ def main(
         step["args"][0]["visible"][i] = True  # Toggle i-th trace to "visible"
         steps.append(step)
 
-
     figs.update_geos(scope='europe')
     sliders = [dict(
         active=0,
@@ -212,13 +211,21 @@ def main(
 
     if show_or_export in ["export", "both"]:
         exp_time = str(int(time.time()))
+        exp_dir = Path() / f"export_{exp_time}"
+        exp_dir.mkdir(exist_ok=False)
+        exp_path = exp_dir.resolve().absolute().__str__() + "/"
         p("Exporting as html")
-        figs.write_html(f"map_export_{exp_time}.html")
+        figs.write_html(f"{exp_path}map_export.html")
         p("Exporting as json")
-        figs.write_json(f"map_export_{exp_time}.json")
+        figs.write_json(f"{exp_path}map_export.json")
+        # p("Exporting as pdf")
+        # figs.write_image(f"{exp_path}map_export.pdf")
         p("Exporting each medication as png")
         for drug, fig in zip(drugs_country_list.keys(), list_of_figs):
-            fig.write_image(f"map_export_{drug}_{exp_time}.png")
+            fig = go.Figure(fig)
+            fig.update_layout(title_text=drug.title())
+            fig.update_geos(scope='europe')
+            fig.write_image(f"{exp_path}map_export_{drug}.png")
     if show_or_export in ["show", "both"]:
         p("Showing map, press ctrl+c to exit")
         try:
