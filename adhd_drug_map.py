@@ -164,6 +164,8 @@ def main(
     colorscale_all_1 = [[0, "rgb(0, 255, 0)"], [1, "rgb(0, 255, 0)"]]
     colorscale_all_0 = [[0, "rgb(255, 0, 0)"], [1, "rgb(255, 0, 0)"]]
 
+    list_of_figs = []
+
 
     for i, medication in enumerate(drugs_country_list):
         fig = go.Choropleth(
@@ -187,6 +189,8 @@ def main(
         else:
             fig.colorscale=colorscale
 
+        list_of_figs.append(fig) # for png storage
+
         figs.add_trace(fig, row=1, col=1)
         step = dict(
             method="update",
@@ -207,12 +211,14 @@ def main(
     figs.update_layout(sliders=sliders)
 
     if show_or_export in ["export", "both"]:
+        exp_time = str(int(time.time()))
         p("Exporting as html")
-        figs.write_html(f"map_export_{int(time.time())}.html")
+        figs.write_html(f"map_export_{exp_time}.html")
         p("Exporting as json")
-        figs.write_json(f"map_export_{int(time.time())}.json")
-        p("Exporting as png")
-        figs.write_image(f"map_export_{int(time.time())}.png")
+        figs.write_json(f"map_export_{exp_time}.json")
+        p("Exporting each medication as png")
+        for drug, fig in zip(drugs_country_list.keys(), list_of_figs):
+            fig.write_image(f"map_export_{drug}_{exp_time}.png")
     if show_or_export in ["show", "both"]:
         p("Showing map, press ctrl+c to exit")
         try:
