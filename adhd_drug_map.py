@@ -223,7 +223,7 @@ def main(
         p("Showing map, press ctrl+c to exit")
         try:
             figs.show()
-        except KeyboardException:
+        except KeyboardInterrupt:
             p("Continuing")
 
     p("Done")
