@@ -205,8 +205,11 @@ def main(
         p("Exporting as png")
         figs.write_image(f"map_export_{int(time.time())}.png")
     elif show_or_export in ["show", "both"]:
-        p("Showing map")
-        figs.show()
+        p("Showing map, press ctrl+c to exit")
+        try:
+            figs.show()
+        except KeyboardException:
+            p("Continuing")
     else:
         raise ValueError(f"Invalid show_or_export: {show_or_export}")
 
