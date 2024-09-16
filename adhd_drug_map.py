@@ -3,14 +3,10 @@ from pathlib import Path
 
 import fire
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-import pycountry
 from plotly.subplots import make_subplots
 
 # list of drugs to monitor
-# Syntax:
-# "DRUGNAME": ["REGEX for the drug name column", {options for pd.DataFrame.str.contains}]
 drugs_regex_dict: dict[str, str] = {
     "Methylphenidate": r"\bmethylphenidat",
     "Lisdexamfetamine": r"\blisdexam(?:f|ph)etamin",
@@ -74,50 +70,28 @@ def main(
     df = load_df(source=source)
     p("Done loading.")
 
+    eu_countries = sorted(list(set(df["Country"].tolist())))
+
     drugs_country_list = {}
     for drug_name, drug_regex in drugs_regex_dict.items():
         p(f"Filtering data for {drug_name}")
         drug_df = df[df["Name"].str.contains(drug_regex, case=False)]
 
         # get the list of each country for each drug
-        countries = set(drug_df["Country"].tolist())
-        countries = [c.split("(")[0].strip() for c in countries]
+        countries = list(set(drug_df["Country"].tolist()))
         for ic, c in enumerate(countries):
             if c.lower().strip() == "european union":
                 code = "Europe"
             else:
-                try:
-                    code = get_country(c)
-                except Exception as err:
-                    print(err)
-                    breakpoint()
+                code = c
             countries[ic] = code
         drugs_country_list[drug_name] = sorted(countries)
 
     p("Loading Europe map")
-    # 2007 is the most recent from that dataset
-    geomap = px.data.gapminder().query("year==2007")
-    # restrict to Europe
-    geomap = geomap[geomap.loc[:, "continent"] == "Europe"]
-    # remove Switzerland (not in European Union)
-    geomap = geomap[geomap.loc[:, "country"] != "Switzerland"]
-    # remove useless columns
-    geomap = geomap.loc[:, ["country", "iso_alpha"]]
-
-    # add missing countries
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Estonia", "iso_alpha": "EST"}])])
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Lithuania", "iso_alpha": "LTU"}])])
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Luxemburg", "iso_alpha": "LUX"}])])
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Malta", "iso_alpha": "MLT"}])])
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Chypria", "iso_alpha": "CYP"}])])
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Liechtenstein", "iso_alpha": "LIE"}])])
-    geomap = pd.concat([geomap, pd.DataFrame([{"country": "Latvia", "iso_alpha": "LVA"}])])
-    assert not geomap.empty
-
-    map_iso = sorted(geomap["iso_alpha"].tolist())
+    geomap = pd.DataFrame(eu_countries, columns=["country"])
 
     geomap["medications"] = ""
-    geomap = geomap.reset_index().set_index("iso_alpha")
+    geomap = geomap.reset_index().set_index("country")
     for drug_name, countries in drugs_country_list.items():
         p(f"Adding {drug_name} to the map")
 
@@ -125,9 +99,8 @@ def main(
         geomap.loc[:, f"color_{drug_name}"] = 0
 
         for cnt in countries:
-            assert cnt in map_iso + ["Europe"], f"{cnt} not in {map_iso}"
             if cnt == "Europe":
-                for cnt in map_iso:
+                for cnt in eu_countries:
                     if drug_name in geomap.loc[cnt, "medications"]:
                         continue
                     if geomap.loc[cnt, "medications"] == "":
@@ -164,7 +137,8 @@ def main(
 
     for drug_name in drugs_country_list:
         fig = go.Choropleth(
-            locations=geomap["iso_alpha"],
+            locations=geomap["country"],
+            locationmode="country names",
             z=geomap[f"color_{drug_name}"],
             hoverinfo="text",
             text=[f"{a}<br>{b}" for a, b in zip(geomap["country"], geomap["medications"])],
@@ -232,12 +206,6 @@ def main(
             p("Continuing")
 
     p("Done")
-
-
-def get_country(fullname: str) -> str:
-    "turn France into FRA"
-    return pycountry.countries.search_fuzzy(fullname)[0].alpha_3
-
 
 def _load_df(source: str) -> pd.DataFrame:
     "loading of pandas dataframe, optionnaly cached"
