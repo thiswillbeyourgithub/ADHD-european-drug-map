@@ -3,6 +3,8 @@
 ## What is this?
 This is a script to automatically download the latest list of drug medications from the EMA (European Medicine Agency), and plot the drug availability per country. The focus of this script is ADHD medication, as it varies wildly by country. Specifically, the drugs tracked are `Methylphenidate`, `Lisdexamfetamine`, `Dexamfetamine`, `Atomoxetine`, `Guanfacine` and `Clonidine`. Note that only countries handled by the EMA are updated, for example Switzerland is in Europe but not part of the European Union. Originally, this project was suggested by a friend after taking a look at [this much cleaner but somewhat outdated ADHD map](https://www.reddit.com/r/europe/comments/mdo3mv/a_map_i_made_of_adhd_treatment_options_in_europe/).
 
+The updated source for the data of the EMA (European Medicine Agency) is this `.xlsx` file that is periodically updated by them: [https://www.ema.europa.eu/en/documents/other/article-57-product-data_en.xlsx](https://www.ema.europa.eu/en/documents/other/article-57-product-data_en.xlsx).
+
 ## Results as of september 2024
 
 !["Atomoxetine"](./results_2024_september_21/map_export_Atomoxetine.png)
